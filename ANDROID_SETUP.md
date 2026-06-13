@@ -59,6 +59,22 @@ git push origin v1.0.0
 
 GitHub автоматически создаст Release с APK-файлом во вкладке **Releases**.
 
+## Минимальная версия Android
+
+`minSdkVersion` установлен в **26 (Android 8.0 Oreo)** в `tauri.conf.json` (`bundle.android.minSdkVersion`).
+
+Это требование библиотеки `cpal` (аудио-движок `rodio`): на Android она линкуется с `libaaudio.so`,
+который появился в NDK только начиная с API 26. Если оставить значение по умолчанию (24),
+сборка падает на этапе линковки с ошибкой:
+
+```
+ld.lld: error: unable to find library -laaudio
+```
+
+Поднимать `minSdkVersion` выше 26 не нужно — этого достаточно для линковки.
+Понижать обратно до 24 нельзя, иначе сборка снова сломается.
+
+
 ## Что работает на Android
 
 - ✅ Воспроизведение треков (streaming)
