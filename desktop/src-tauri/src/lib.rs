@@ -6,7 +6,6 @@ mod network;
 mod shared;
 mod track_cache;
 
-#[cfg(not(target_os = "android"))]
 mod discord;
 
 use std::sync::{Arc, Mutex};

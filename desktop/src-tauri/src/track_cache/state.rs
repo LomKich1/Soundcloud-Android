@@ -1177,6 +1177,7 @@ impl TrackCacheState {
         if let Ok(ref incoming_path) = download_result {
             self.finalize_incoming(incoming_path, liked, expected_duration_ms)
                 .await;
+            #[cfg(not(target_os = "android"))]
             self.spawn_transcode(urn.to_string());
         }
 
@@ -1226,6 +1227,7 @@ impl TrackCacheState {
     /// Queue a background transcode of a raw incoming file into the clean cache.
     /// No-op when ffmpeg is unavailable or a transcode for this URN is already
     /// in flight (live request and startup recovery coalesce on the same set).
+    #[cfg(not(target_os = "android"))]
     fn spawn_transcode(&self, urn: String) {
         let Some(ffmpeg) = self.ffmpeg() else {
             return;
@@ -1254,6 +1256,7 @@ impl TrackCacheState {
     /// Transcode `incoming_dir/<urn>` → clean m4a in the routed dest dir, then
     /// drop the raw file. Validates the result against the API duration and
     /// discards truncated downloads. Caller owns the `transcoding` dedup slot.
+    #[cfg(not(target_os = "android"))]
     async fn run_transcode(&self, ffmpeg: &Path, urn: &str) -> Result<(), String> {
         let _permit = self
             .transcode_limiter
@@ -1392,6 +1395,7 @@ impl TrackCacheState {
             self.diag("INFO", line);
         }
         for urn in urns {
+            #[cfg(not(target_os = "android"))]
             self.spawn_transcode(urn);
         }
     }
@@ -1399,6 +1403,7 @@ impl TrackCacheState {
     /// Ensure a clean m4a exists for export, coalescing with any background
     /// transcode via the shared dedup set. Returns the clean path, or `None` if
     /// no clean file could be produced (caller falls back to the raw bytes).
+    #[cfg(not(target_os = "android"))]
     async fn ensure_clean_for_export(&self, urn: &str, ffmpeg: &Path) -> Option<PathBuf> {
         if let Some(path) = self.resolve_clean_path(urn) {
             return Some(path);
@@ -1457,6 +1462,7 @@ impl TrackCacheState {
         let entry = self.ensure_cached(req).await?;
         let mut source_path = PathBuf::from(&entry.path);
 
+        #[cfg(not(target_os = "android"))]
         if let Some(ffmpeg) = self.ffmpeg() {
             if let Some(clean) = self.ensure_clean_for_export(&urn, &ffmpeg).await {
                 source_path = clean;
