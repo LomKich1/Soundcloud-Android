@@ -80,6 +80,39 @@ jobs:
         working-directory: desktop
         run: pnpm install
 
+      # ── Кросс-компиляция libopus для aarch64-android ─────────────────────────
+      # audiopus_sys 0.1.8 вызывает ./configure без --host и без NDK-компилятора,
+      # поэтому собирает libopus.so под x86_64-хост вместо aarch64-android.
+      # Мы собираем статическую libopus.a сами; audiopus_sys подхватит её через
+      # LIBOPUS_LIB_DIR / LIBOPUS_STATIC / LIBOPUS_NO_PKG и пропустит свой build.
+      - name: Pre-build libopus for aarch64-android
+        run: |
+          set -e
+          NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          OPUS_PREFIX="${HOME}/opus-android-aarch64"
+
+          curl -fsSL "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz" | tar xz
+          cd opus-1.5.2
+
+          ./configure \
+            --host=aarch64-linux-android \
+            CC="${NDK_BIN}/aarch64-linux-android26-clang" \
+            AR="${NDK_BIN}/llvm-ar" \
+            RANLIB="${NDK_BIN}/llvm-ranlib" \
+            STRIP="${NDK_BIN}/llvm-strip" \
+            --enable-static \
+            --disable-shared \
+            --disable-doc \
+            --disable-extra-programs \
+            --with-pic \
+            --prefix="${OPUS_PREFIX}"
+
+          make -j$(nproc) install
+
+          echo "LIBOPUS_LIB_DIR=${OPUS_PREFIX}/lib" >> $GITHUB_ENV
+          echo "LIBOPUS_STATIC=1"                   >> $GITHUB_ENV
+          echo "LIBOPUS_NO_PKG=1"                   >> $GITHUB_ENV
+
       # ── Tauri CLI ─────────────────────────────────────────────────────────────
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
@@ -106,6 +139,14 @@ jobs:
           echo "TAURI_ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
           echo "TAURI_ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"   >> $GITHUB_ENV
       # ── Сборка APK ───────────────────────────────────────────────────────────
+      # audiopus_sys/build.rs не объявляет cargo:rerun-if-env-changed для
+      # LIBOPUS_LIB_DIR, поэтому Cargo не перезапустит build.rs при изменении
+      # переменной, если артефакт уже есть в кеше. Удаляем вручную.
+      - name: Invalidate audiopus_sys build cache
+        run: |
+          rm -rf desktop/src-tauri/target/aarch64-linux-android/release/build/audiopus_sys-*/
+          rm -rf desktop/src-tauri/target/aarch64-linux-android/release/build/audiopus-*/
+
       - name: Build APK (aarch64)
         working-directory: desktop
         run: cargo tauri android build --apk --target aarch64
