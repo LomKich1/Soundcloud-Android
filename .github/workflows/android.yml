@@ -34,9 +34,11 @@ jobs:
       - name: Install NDK & CMake
         run: |
           sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+
       - name: Set ANDROID_NDK_HOME
         run: |
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+
       # ── Rust ─────────────────────────────────────────────────────────────────
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -48,6 +50,7 @@ jobs:
             armv7-linux-androideabi \
             x86_64-linux-android \
             i686-linux-android
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -81,10 +84,6 @@ jobs:
         run: pnpm install
 
       # ── Кросс-компиляция libopus для aarch64-android ─────────────────────────
-      # audiopus_sys 0.1.8 вызывает ./configure без --host и без NDK-компилятора,
-      # поэтому собирает libopus.so под x86_64-хост вместо aarch64-android.
-      # Мы собираем статическую libopus.a сами; audiopus_sys подхватит её через
-      # LIBOPUS_LIB_DIR / LIBOPUS_STATIC / LIBOPUS_NO_PKG и пропустит свой build.
       - name: Pre-build libopus for aarch64-android
         run: |
           set -e
@@ -126,6 +125,76 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
           NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
+      # ── ИСПРАВЛЕНИЕ: Патчим AndroidManifest.xml ──────────────────────────────
+      # Tauri 2 автоматически добавляет INTERNET permission, но НЕ добавляет
+      # android:usesCleartextTraffic="true". Без него Android 9+ (API 28+) блокирует
+      # HTTP-трафик к http://127.0.0.1:PORT (warp-серверы статики и прокси).
+      # minSdkVersion=26 (Android 8), но реальные телефоны пользователей — на API 28+.
+      - name: Patch AndroidManifest.xml
+        run: |
+          MANIFEST="desktop/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+
+          echo "=== AndroidManifest.xml ДО патча ==="
+          cat "$MANIFEST"
+
+          # 1. Добавляем usesCleartextTraffic="true" в <application>, если ещё нет
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            # Вставляем атрибут к первому вхождению <application
+            # Используем Python для безопасного XML-редактирования
+            python3 - "$MANIFEST" <<'PYEOF'
+          import sys, re
+
+          path = sys.argv[1]
+          with open(path, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Добавляем атрибут в тег <application ...>
+          # Ищем первый <application с пробелом/переносом после него
+          content = re.sub(
+              r'(<application\b)',
+              r'\1\n        android:usesCleartextTraffic="true"',
+              content,
+              count=1
+          )
+
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(content)
+
+          print("usesCleartextTraffic=true добавлен")
+          PYEOF
+          else
+            echo "usesCleartextTraffic уже присутствует, пропускаем"
+          fi
+
+          # 2. Проверяем наличие INTERNET permission (Tauri добавляет автоматически)
+          if grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            echo "✅ INTERNET permission: OK"
+          else
+            echo "⚠️  INTERNET permission отсутствует! Добавляем..."
+            python3 - "$MANIFEST" <<'PYEOF'
+          import sys, re
+
+          path = sys.argv[1]
+          with open(path, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Добавляем перед </manifest>
+          content = content.replace(
+              '</manifest>',
+              '    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>'
+          )
+
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(content)
+
+          print("INTERNET permission добавлен")
+          PYEOF
+          fi
+
+          echo ""
+          echo "=== AndroidManifest.xml ПОСЛЕ патча ==="
+          cat "$MANIFEST"
+
       # ── Keystore ─────────────────────────────────────────────────────────────
       - name: Set up signing keystore
         env:
@@ -133,20 +202,20 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/release.keystore
           echo "TAURI_ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
+
       - name: Export signing env vars
         run: |
-          echo "TAURI_ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"         >> $GITHUB_ENV
+          echo "TAURI_ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"             >> $GITHUB_ENV
           echo "TAURI_ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "TAURI_ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"   >> $GITHUB_ENV
-      # ── Сборка APK ───────────────────────────────────────────────────────────
-      # audiopus_sys/build.rs не объявляет cargo:rerun-if-env-changed для
-      # LIBOPUS_LIB_DIR, поэтому Cargo не перезапустит build.rs при изменении
-      # переменной, если артефакт уже есть в кеше. Удаляем вручную.
+          echo "TAURI_ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"       >> $GITHUB_ENV
+
+      # ── Инвалидируем кеш audiopus_sys ────────────────────────────────────────
       - name: Invalidate audiopus_sys build cache
         run: |
           rm -rf desktop/src-tauri/target/aarch64-linux-android/release/build/audiopus_sys-*/
           rm -rf desktop/src-tauri/target/aarch64-linux-android/release/build/audiopus-*/
 
+      # ── Сборка APK ───────────────────────────────────────────────────────────
       - name: Build APK (aarch64)
         working-directory: desktop
         run: cargo tauri android build --apk --target aarch64
@@ -162,7 +231,8 @@ jobs:
           APK=$(find desktop/src-tauri/gen/android -name "*.apk" | head -1)
           echo "apk_path=$APK" >> $GITHUB_OUTPUT
           echo "Found APK: $APK"
-      # ── Загружаем как артефакт для каждого коммита ────────────────────────────
+
+      # ── Загружаем как артефакт ────────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:

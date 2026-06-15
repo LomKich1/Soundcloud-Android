@@ -18,10 +18,9 @@ use discord::DiscordState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Мутабельный builder — удобно для платформенных условий без смены типа
     let mut builder = tauri::Builder::default();
 
-    // single-instance: только на десктопе (на Android нет смысла)
+    // single-instance: только на десктопе
     #[cfg(not(target_os = "android"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -102,11 +101,17 @@ pub fn run() {
             let (static_port, proxy_port) = rt.block_on(network::server::start_all(wallpapers_dir));
             let rt_handle = rt.handle().clone();
 
+            // ─── DPI desync ────────────────────────────────────────────────────────────
+            // ИСПРАВЛЕНИЕ: На Android probe_in_background() может блокировать поток на
+            // сетевых системных вызовах, недоступных без root. Оборачиваем полностью.
+            // На Android DPI-bypass всё равно не нужен (нет TCP-манипуляций в юзерспейсе).
+            #[cfg(not(target_os = "android"))]
             if let Ok(d) = rt.block_on(dpi_desync::Desync::spawn(true)) {
                 network::dpi::install(d);
                 rt.block_on(network::dpi::probe_in_background());
             }
 
+            // Держим runtime живым в фоновом потоке
             std::thread::spawn(move || {
                 rt.block_on(std::future::pending::<()>());
             });
@@ -125,9 +130,7 @@ pub fn run() {
                 client: Mutex::new(None),
             }));
 
-            // На Android Discord-стейт не нужен, но команды возвращают стаб-ошибку
-
-            // FFmpeg: только на десктопе (на Android subprocess запрещён)
+            // FFmpeg + track_cache: только на десктопе
             #[cfg(not(target_os = "android"))]
             {
                 let ffmpeg_dir = cache_dir.join("ffmpeg");
@@ -144,7 +147,7 @@ pub fn run() {
                 });
             }
 
-            // На Android: track_cache без ffmpeg
+            // Android: track_cache без ffmpeg
             #[cfg(target_os = "android")]
             {
                 let mut track_cache_state =
@@ -172,20 +175,27 @@ pub fn run() {
                 auth::SessionStore::init(data_dir.clone(), auth_http_client, rt_handle.clone());
             app.manage(auth_state);
 
-            let call_state = network::call::CallState::init(data_dir.clone(), rt_handle);
-            network::call::manage_state(app.handle(), call_state.clone());
-            network::call::maybe_autostart(app.handle(), call_state);
+            // ─── Call client ───────────────────────────────────────────────────────────
+            // ИСПРАВЛЕНИЕ: call-client использует нативные сокеты и может вызывать
+            // maybe_autostart(), который спавнит фоновый процесс — запрещено на Android.
+            // CallState не регистрируется, значит call_set_enabled/call_status не будут
+            // доступны — они исключены из invoke_handler ниже через #[cfg].
+            #[cfg(not(target_os = "android"))]
+            {
+                let call_state = network::call::CallState::init(data_dir.clone(), rt_handle);
+                network::call::manage_state(app.handle(), call_state.clone());
+                network::call::maybe_autostart(app.handle(), call_state);
+            }
 
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            // На десктопе — скрываем в трей вместо закрытия
+            // Десктоп: скрываем в трей вместо закрытия
             #[cfg(not(target_os = "android"))]
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            // На Android — стандартное поведение закрытия (ничего не делаем)
             #[cfg(not(target_os = "android"))]
             tauri::WindowEvent::Focused(false)
                 if window.label() == app::popover::LABEL =>
@@ -201,10 +211,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             network::server::get_server_ports,
             app::diagnostics::diagnostics_log,
+            // Discord: есть android-стабы, работает везде
             discord::discord_connect,
             discord::discord_disconnect,
             discord::discord_set_activity,
             discord::discord_clear_activity,
+            // Audio: cpal/rodio поддерживают Android через AAudio (minSdk 26)
             audio::audio_load_file,
             audio::audio_load_url,
             audio::audio_play,
@@ -231,8 +243,12 @@ pub fn run() {
             audio::audio_preview_play,
             audio::audio_preview_stop,
             audio::save_track_to_path,
+            // ИСПРАВЛЕНИЕ: import через subprocess — только десктоп
+            #[cfg(not(target_os = "android"))]
             import::ym_import_start,
+            #[cfg(not(target_os = "android"))]
             import::ym_import_stop,
+            // Track cache: работает на обеих платформах
             track_cache::track_ensure_cached,
             track_cache::track_export,
             track_cache::track_is_cached,
@@ -253,13 +269,20 @@ pub fn run() {
             track_cache::track_cancel_cache_likes,
             network::image_cache::image_cache_size,
             network::image_cache::image_cache_clear,
+            // ИСПРАВЛЕНИЕ: call команды требуют CallState в manage() — только десктоп.
+            // На Android CallState не регистрируется → вызов этих команд вызвал бы panic.
+            #[cfg(not(target_os = "android"))]
             network::call::call_set_enabled,
+            #[cfg(not(target_os = "android"))]
             network::call::call_is_enabled,
+            #[cfg(not(target_os = "android"))]
             network::call::call_status,
             auth::auth_status,
             auth::auth_set_session,
             auth::auth_logout,
             auth::auth_set_premium,
+            // DPI команды безопасны на Android: без dpi_desync::install() они просто
+            // возвращают дефолтные значения через DESYNC.get() == None
             network::dpi::dpi_set_enabled,
             network::dpi::dpi_is_enabled,
             network::dpi::dpi_strategy,

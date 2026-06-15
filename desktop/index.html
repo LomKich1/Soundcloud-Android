@@ -2,8 +2,69 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SoundCloud Desktop</title>
+
+    <!--
+      ИСПРАВЛЕНИЕ 1: viewport-fit=cover нужен для notch/punch-hole экранов Android.
+      maximum-scale=1 запрещает «zoom by double-tap», который ломает fixed-позиционирование.
+      user-scalable=no — то же для pinch-zoom (WebView игнорирует его для accessibility).
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- ИСПРАВЛЕНИЕ 2: Фон body = цвет приложения.
+         Без этого, пока React монтируется, Android WebView показывает белый или
+         прозрачный фон (виден чёрный нативный фон) → «чёрный экран» при запуске. -->
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #root {
+        /* Базовый тёмный фон — тот же оттенок, что у AppShell */
+        background-color: #060609;
+        color: rgba(255, 255, 255, 0.85);
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        /* Запрет выделения текста (мешает на touch-экранах) */
+        -webkit-user-select: none;
+        user-select: none;
+        /* Убираем задержку 300ms на touch */
+        touch-action: manipulation;
+      }
+
+      /* Разрешаем выделение только в input / textarea */
+      input,
+      textarea,
+      [contenteditable] {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      /* Убираем тап-подсветку на Android */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Скрываем полосу прокрутки (WebView её и так не показывает, но на всякий случай) */
+      ::-webkit-scrollbar {
+        display: none;
+      }
+
+      /* [data-scrolling] отключает hover-эффекты во время скролла (см. AppShell) */
+      [data-scrolling] * {
+        pointer-events: none !important;
+      }
+    </style>
+
+    <title>SoundCloud</title>
   </head>
   <body>
     <div id="root"></div>

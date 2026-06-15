@@ -15,6 +15,7 @@ import {useSettingsStore} from '../../stores/settings';
 import {NowPlayingBar} from './NowPlayingBar';
 import {Sidebar} from './Sidebar';
 import {Titlebar} from './Titlebar';
+import {MobileNavBar} from './MobileNavBar';
 
 const LyricsPanel = lazy(() =>
   import('../music/LyricsPanel').then((module) => ({ default: module.LyricsPanel })),
@@ -23,13 +24,38 @@ const QueuePanel = lazy(() =>
   import('../music/QueuePanel').then((module) => ({ default: module.QueuePanel })),
 );
 
+/* ── Хук: определение мобильного экрана ───────────────────────────────── */
+
+/**
+ * Возвращает true, если ширина viewport < 768px.
+ * Используется для скрытия Sidebar и Titlebar на телефонах (Android WebView).
+ * Реагирует на изменение ориентации устройства без перезагрузки.
+ */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    // Синхронизируем сразу — matchMedia.matches актуальнее window.innerWidth
+    setIsMobile(mq.matches);
+
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  return isMobile;
+}
+
 /* ── Keybinding definitions ────────────────────────────────── */
 
 interface Keybinding {
   key: string;
   label: string;
   group: 'playback' | 'navigation' | 'panels';
-  display: string; // what to show in the UI (e.g. "Space", "←", "M")
+  display: string;
 }
 
 const keybindings: Keybinding[] = [
@@ -40,7 +66,7 @@ const keybindings: Keybinding[] = [
   { key: 'p', label: 'kb.prevTrack', group: 'playback', display: 'P' },
   { key: 's', label: 'kb.shuffle', group: 'playback', display: 'S' },
   { key: 'r', label: 'kb.repeat', group: 'playback', display: 'R' },
-    {key: 'b', label: 'kb.abLoop', group: 'playback', display: 'B'},
+  {key: 'b', label: 'kb.abLoop', group: 'playback', display: 'B'},
   { key: 'ArrowUp', label: 'kb.volumeUp', group: 'playback', display: '↑' },
   { key: 'ArrowDown', label: 'kb.volumeDown', group: 'playback', display: '↓' },
   { key: 'm', label: 'kb.mute', group: 'playback', display: 'M' },
@@ -90,7 +116,6 @@ const KeybindingsDialog = React.memo(
         <Dialog.Portal>
           <Dialog.Overlay className="dialog-overlay fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" />
           <Dialog.Content className="dialog-content fixed z-[80] top-1/2 left-1/2 w-full max-w-[520px] bg-[#1a1a1e]/95 backdrop-blur-2xl border border-white/[0.08] rounded-3xl shadow-2xl overflow-hidden">
-            {/* Header */}
             <div className="px-7 pt-6 pb-4 border-b border-white/[0.06]">
               <Dialog.Title className="text-[18px] font-bold text-white/90 tracking-tight">
                 {t('kb.title')}
@@ -99,8 +124,6 @@ const KeybindingsDialog = React.memo(
                 {isMac() ? '⌘' : 'Ctrl'} + / {t('kb.toToggle')}
               </Dialog.Description>
             </div>
-
-            {/* Body */}
             <div className="px-7 py-5 space-y-6 max-h-[60vh] overflow-y-auto">
               {groups.map((group) => (
                 <div key={group.id}>
@@ -125,8 +148,6 @@ const KeybindingsDialog = React.memo(
                 </div>
               ))}
             </div>
-
-            {/* Footer */}
             <div className="px-7 py-4 border-t border-white/[0.06] flex justify-end">
               <Dialog.Close asChild>
                 <button
@@ -146,17 +167,9 @@ const KeybindingsDialog = React.memo(
 
 /* ── Backgrounds ───────────────────────────────────────────── */
 
-// Fine film grain (SVG turbulence) — one static tile, no animation. Gives the
-// wallpaper a photographic, premium feel instead of a flat poster.
 const GRAIN_BG =
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
-/** Wallpaper layer — the photo lives at the very back, full-bleed and crisp. A
- *  cinematic vignette sinks the edges (so the page's aura orbs read as light
- *  blooming from the corners) while the centre stays vivid; soft chrome
- *  gradients keep the titlebar / dock / sidebar legible. The aura orbs and star
- *  field still mount over this — wallpaper + glow + stars as one composition.
- *  `bgOpacity` is the readability dim on top; no motion (it's a backdrop). */
 const CustomBackground = React.memo(() => {
     const perf = usePerfMode();
     const {bgName, bgOpacity, bgDim, bgBlur} = useSettingsStore(
@@ -172,7 +185,7 @@ const CustomBackground = React.memo(() => {
   if (!bgUrl) return null;
 
     const effBlur = perf.blur(bgBlur);
-    const dim = bgOpacity; // edge/vignette + chrome readability framing
+    const dim = bgOpacity;
 
   return (
       <div
@@ -190,15 +203,12 @@ const CustomBackground = React.memo(() => {
                   transform: 'translateZ(0)',
               }}
           />
-
-          {/* cinematic vignette — vivid centre, sunken edges where the orbs glow */}
           <div
               className="absolute inset-0"
               style={{
                   background: `radial-gradient(125% 110% at 50% 38%, transparent 38%, rgba(6,6,9,${(0.4 + dim * 0.45).toFixed(3)}) 100%)`,
               }}
           />
-          {/* chrome legibility gradients */}
           <div
               className="absolute inset-x-0 top-0 h-36"
               style={{
@@ -217,8 +227,6 @@ const CustomBackground = React.memo(() => {
                   background: `linear-gradient(to right, rgba(6,6,9,${(0.28 + dim * 0.35).toFixed(3)}), transparent)`,
               }}
           />
-          {/* uniform full-frame dim — tames very bright wallpapers everywhere,
-          not just the edges (separate from the vignette above) */}
           {bgDim > 0 && (
               <div
                   className="absolute inset-0 bg-[rgb(6,6,9)] transition-opacity duration-300"
@@ -275,76 +283,70 @@ export const AppShell = React.memo(() => {
   });
   const onQueueToggle = useCallback(() => setQueueOpen((v) => !v), []);
   const onQueueClose = useCallback(() => setQueueOpen(false), []);
-    const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
-    // Mirror panel state into refs so the global keydown listener binds once.
-    const queueOpenRef = useRef(queueOpen);
-    queueOpenRef.current = queueOpen;
-    const kbOpenRef = useRef(kbOpen);
-    kbOpenRef.current = kbOpen;
+  // ── ИСПРАВЛЕНИЕ: Определяем мобильный экран ───────────────────────────────
+  // На Android телефоне ширина < 768px → скрываем Titlebar (window controls) и
+  // Sidebar (левая навигационная панель), которые при ~360px ширине делают
+  // контентную область нулевой и вызывают «чёрный экран».
+  const isMobile = useIsMobile();
 
-    // Anti-sticky-hover: WebKitGTK doesn't re-hit-test :hover while the content
-    // scrolls under a stationary cursor, so cards "freeze" hovered or light up the
-    // wrong tile. Flag the scroll container while scrolling (CSS drops pointer
-    // events app-wide); clear the instant the pointer actually moves or presses.
-    useEffect(() => {
-        const main = mainRef.current;
-        if (!main) return;
-        let t: ReturnType<typeof setTimeout> | null = null;
-        const clear = () => {
-            if (t) {
-                clearTimeout(t);
-                t = null;
-            }
-            if (main.hasAttribute('data-scrolling')) main.removeAttribute('data-scrolling');
-        };
-        const onScroll = () => {
-            if (!main.hasAttribute('data-scrolling')) main.setAttribute('data-scrolling', '1');
-            if (t) clearTimeout(t);
-            t = setTimeout(clear, 120);
-        };
-        main.addEventListener('scroll', onScroll, {passive: true});
-        main.addEventListener('pointermove', clear, {passive: true});
-        main.addEventListener('pointerdown', clear, {passive: true});
-        return () => {
-            main.removeEventListener('scroll', onScroll);
-            main.removeEventListener('pointermove', clear);
-            main.removeEventListener('pointerdown', clear);
-            if (t) clearTimeout(t);
-        };
-    }, []);
+  const queueOpenRef = useRef(queueOpen);
+  queueOpenRef.current = queueOpen;
+  const kbOpenRef = useRef(kbOpen);
+  kbOpenRef.current = kbOpen;
 
+  // Anti-sticky-hover fix (WebKitGTK)
   useEffect(() => {
+      const main = mainRef.current;
+      if (!main) return;
+      let t: ReturnType<typeof setTimeout> | null = null;
+      const clear = () => {
+          if (t) { clearTimeout(t); t = null; }
+          if (main.hasAttribute('data-scrolling')) main.removeAttribute('data-scrolling');
+      };
+      const onScroll = () => {
+          if (!main.hasAttribute('data-scrolling')) main.setAttribute('data-scrolling', '1');
+          if (t) clearTimeout(t);
+          t = setTimeout(clear, 120);
+      };
+      main.addEventListener('scroll', onScroll, {passive: true});
+      main.addEventListener('pointermove', clear, {passive: true});
+      main.addEventListener('pointerdown', clear, {passive: true});
+      return () => {
+          main.removeEventListener('scroll', onScroll);
+          main.removeEventListener('pointermove', clear);
+          main.removeEventListener('pointerdown', clear);
+          if (t) clearTimeout(t);
+      };
+  }, []);
+
+  // Клавиатурные сокращения — только на десктопе (на Android нет физической клавиатуры)
+  useEffect(() => {
+    if (isMobile) return; // пропускаем навешивание обработчика на телефоне
+
     const handler = (e: KeyboardEvent) => {
       const inInput = isInputEl(e.target);
-      // e.code = physical key (layout-independent), e.key = character
       const code = e.code;
 
-      // Ctrl+/ — toggle keybindings dialog (always)
       if ((e.key === '/' || code === 'Slash') && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setKbOpen((v) => !v);
         return;
       }
-
-      // Ctrl+K — focus search (always, even in input)
       if (code === 'KeyK' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-          document.getElementById('global-search-input')?.focus();
+        document.getElementById('global-search-input')?.focus();
         return;
       }
-
-      // F11 — toggle fullscreen (always)
       if (code === 'F11' && !e.repeat) {
         e.preventDefault();
         void toggleWindowFullscreen();
         return;
       }
-
-      // / — focus search (not in input)
       if ((e.key === '/' || code === 'Slash') && !inInput) {
         e.preventDefault();
-          document.getElementById('global-search-input')?.focus();
+        document.getElementById('global-search-input')?.focus();
         return;
       }
 
@@ -372,12 +374,7 @@ export const AppShell = React.memo(() => {
           const hold = volumeHoldRef.current;
           const sameKeyHold = e.repeat && hold.key === code && now - hold.lastAt < 250;
           const repeatCount = sameKeyHold ? hold.repeatCount + 1 : 0;
-          volumeHoldRef.current = {
-            key: code,
-            repeatCount,
-            lastAt: now,
-          };
-
+          volumeHoldRef.current = { key: code, repeatCount, lastAt: now };
           const direction = code === 'ArrowUp' ? 1 : -1;
           const step = getVolumeStep(repeatCount);
           player.setVolume(usePlayerStore.getState().volume + direction * step);
@@ -388,35 +385,16 @@ export const AppShell = React.memo(() => {
           player.setVolume(volume > 0 ? 0 : volumeBeforeMute);
           break;
         }
-        case 'KeyN':
-          player.next();
-          break;
-        case 'KeyP':
-          handlePrev();
-          break;
-        case 'KeyS':
-          player.toggleShuffle();
-          break;
-        case 'KeyR':
-          player.toggleRepeat();
-          break;
-          case 'KeyB':
-              player.cycleAbPoint(getCurrentTime());
-              break;
-        case 'KeyL':
-          useLyricsStore.getState().toggle();
-          break;
-        case 'KeyQ':
-          setQueueOpen((v) => !v);
-          break;
-        case 'BracketLeft':
-          useSettingsStore.getState().toggleSidebar();
-          break;
+        case 'KeyN': player.next(); break;
+        case 'KeyP': handlePrev(); break;
+        case 'KeyS': player.toggleShuffle(); break;
+        case 'KeyR': player.toggleRepeat(); break;
+        case 'KeyB': player.cycleAbPoint(getCurrentTime()); break;
+        case 'KeyL': useLyricsStore.getState().toggle(); break;
+        case 'KeyQ': setQueueOpen((v) => !v); break;
+        case 'BracketLeft': useSettingsStore.getState().toggleSidebar(); break;
         case 'Escape':
-            if (kbOpenRef.current) {
-            setKbOpen(false);
-            break;
-          }
+          if (kbOpenRef.current) { setKbOpen(false); break; }
           if (useLyricsStore.getState().open) useLyricsStore.getState().close();
           else if (queueOpenRef.current) setQueueOpen(false);
           break;
@@ -435,21 +413,49 @@ export const AppShell = React.memo(() => {
       window.removeEventListener('keydown', handler);
       window.removeEventListener('keyup', resetVolumeHold);
     };
-  }, []);
+  }, [isMobile]);
+
+  // ── Отступ под плеер ────────────────────────────────────────────────────────
+  // Десктоп: NowPlayingBar — плавающий dock, контент под ним (pb-[136px]).
+  // Мобильный: NowPlayingBar (~72px) + MobileNavBar (~52px + safe-area) = ~136px.
+  // Итого отступ одинаковый, но на мобиле ещё нет Titlebar (56px) — компенсируем
+  // верхним паддингом через pt-safe (env safe-area-inset-top для notch).
+  const mainPaddingBottom = isMobile ? '148px' : '136px';
 
   return (
     <div className="flex flex-col h-screen relative overflow-hidden">
       <CustomBackground />
       <AmbientGlow />
-      <Titlebar />
+
+      {/* ── Titlebar: только на десктопе ─────────────────────────────────────── */}
+      {!isMobile && <Titlebar />}
+
       <div className="flex flex-1 min-h-0 relative z-10" style={{ isolation: 'isolate' }}>
-        <Sidebar />
-          {/* pb clears the floating now-playing dock, which overlays (doesn't push) content */}
-          <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-[136px]">
+        {/* ── Sidebar: только на десктопе ────────────────────────────────────── */}
+        {!isMobile && <Sidebar />}
+
+        {/* ── Основной контент ─────────────────────────────────────────────── */}
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden"
+          style={{
+            paddingBottom: mainPaddingBottom,
+            // На мобиле добавляем отступ сверху для notch (status bar)
+            paddingTop: isMobile
+              ? 'env(safe-area-inset-top, 0px)'
+              : undefined,
+          }}
+        >
           <StableOutlet />
         </main>
       </div>
+
+      {/* ── NowPlayingBar: на обеих платформах ───────────────────────────────── */}
       <NowPlayingBar onQueueToggle={onQueueToggle} queueOpen={queueOpen} />
+
+      {/* ── MobileNavBar: только на мобиле ───────────────────────────────────── */}
+      {isMobile && <MobileNavBar />}
+
       {queueOpen && (
         <Suspense fallback={null}>
           <QueuePanel open={queueOpen} onClose={onQueueClose} />
@@ -460,7 +466,9 @@ export const AppShell = React.memo(() => {
           <LyricsPanel />
         </Suspense>
       )}
-      <KeybindingsDialog open={kbOpen} onOpenChange={setKbOpen} />
+      {!isMobile && (
+        <KeybindingsDialog open={kbOpen} onOpenChange={setKbOpen} />
+      )}
     </div>
   );
 });

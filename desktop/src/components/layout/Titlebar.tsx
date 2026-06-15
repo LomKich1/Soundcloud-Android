@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import React from 'react';
+import React, {useMemo} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import appIcon from '../../assets/app-icon.png';
@@ -15,9 +15,7 @@ const NavButtons = React.memo(() => {
   const navigate = useNavigate();
   const location = useLocation();
   const canGoBack = location.key !== 'default';
-    // `/` — индекс-роут, который всегда редиректит на стартовую страницу; домашняя
-    // лента живёт на `/home`. Активное состояние и навигация — по нему.
-    const onHome = location.pathname === '/home';
+  const onHome = location.pathname === '/home';
 
   return (
       <div className="flex items-center gap-1">
@@ -75,7 +73,13 @@ const WinButton = ({
         type="button"
         aria-label={label}
         title={label}
-        onClick={onClick}
+        onClick={() => {
+            // ИСПРАВЛЕНИЕ: оборачиваем в try-catch.
+            // На Android window.minimize() / toggleMaximize() / close() могут выбросить
+            // исключение, т.к. AppShell скрывает Titlebar на узких экранах, но если
+            // компонент всё же отрендерился (планшет в landscape) — не крашим React.
+            try { onClick(); } catch (e) { console.warn('[Titlebar] window control error:', e); }
+        }}
         className={`w-10 h-9 rounded-lg flex items-center justify-center text-white/30 transition-all duration-150 cursor-pointer ${
             danger ? 'hover:text-white hover:bg-red-500/80' : 'hover:text-white/80 hover:bg-white/[0.07]'
         }`}
@@ -87,7 +91,15 @@ const WinButton = ({
 export const Titlebar = React.memo(() => {
   const { t } = useTranslation();
     const collapsed = useSettingsStore((s) => s.sidebarCollapsed);
-    const win = getCurrentWindow();
+
+    // ИСПРАВЛЕНИЕ: getCurrentWindow() вызываем через useMemo и оборачиваем в try-catch.
+    // В десктопном Tauri он всегда возвращает WebviewWindow.
+    // На Android (если Titlebar вдруг отрендерился — например планшет > 768px)
+    // вызов безопасен, но window.minimize() / close() ниже могут не работать —
+    // они защищены try-catch в WinButton.
+    const win = useMemo(() => {
+        try { return getCurrentWindow(); } catch { return null; }
+    }, []);
 
   return (
     <div
@@ -107,7 +119,7 @@ export const Titlebar = React.memo(() => {
             }}
         />
 
-        {/* LEFT: logo (image) + collapsible wordmark + persistent nav */}
+        {/* LEFT */}
         <div className="flex items-center gap-3 shrink-0">
             <div className="flex items-center">
                 <img
@@ -120,8 +132,6 @@ export const Titlebar = React.memo(() => {
                             '0 2px 12px var(--color-accent-glow), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
                     }}
                 />
-                {/* Always rendered; collapses purely via CSS so there's no JS mount/unmount
-              race when the sidebar toggles. max-width + padding fold the reclaimed space. */}
                 <span
                     className="overflow-hidden whitespace-nowrap text-[14px] font-bold tracking-tight text-white/85"
                     style={{
@@ -138,23 +148,23 @@ export const Titlebar = React.memo(() => {
         <NavButtons />
       </div>
 
-        {/* CENTER: the one global search */}
+        {/* CENTER */}
         <div className="flex-1 flex justify-center min-w-0">
             <GlobalSearch/>
         </div>
 
-        {/* RIGHT: window controls */}
+        {/* RIGHT: window controls — используем win?.method() для безопасности */}
         <div className="flex items-center gap-0.5 shrink-0">
             <WinButton onClick={() => void toggleWindowFullscreen()} label={t('kb.fullscreen')}>
                 <Fullscreen size={13}/>
             </WinButton>
-            <WinButton onClick={() => win.minimize()} label="Minimize">
+            <WinButton onClick={() => win?.minimize()} label="Minimize">
                 <Minus size={15}/>
             </WinButton>
-            <WinButton onClick={() => win.toggleMaximize()} label="Maximize">
+            <WinButton onClick={() => win?.toggleMaximize()} label="Maximize">
                 <Square size={12}/>
             </WinButton>
-            <WinButton onClick={() => win.close()} danger label="Close">
+            <WinButton onClick={() => win?.close()} danger label="Close">
                 <X size={15}/>
             </WinButton>
       </div>
