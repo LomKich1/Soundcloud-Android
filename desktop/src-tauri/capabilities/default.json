@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Desktop capability: window controls, tray, dragging",
-  "platforms": ["linux", "macos", "windows"],
+  "platforms": ["linux", "macOS", "windows"],
   "windows": ["main", "tray-popover"],
   "remote": {
     "urls": [
