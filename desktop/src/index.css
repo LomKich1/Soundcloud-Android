@@ -1305,3 +1305,101 @@ select,
         animation: none;
     }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE PATCH — max-width: 480px (экраны телефонов)
+   ═══════════════════════════════════════════════════════════════════════
+   FIX 1: Мини-плеер строго НАД навигационным меню (не поверх него)
+   FIX 2: Скрытие мелких контролов плеера — оставляем только обложку,
+          название трека и кнопки назад / плей-пауза / вперёд
+   FIX 3: Горизонтальные ряды карточек → вертикальный список,
+          сетки grid-cols-2 → один столбец
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+
+    /* ── FIX 1: Плеер — position:fixed, прибит СТРОГО НАД навбаром ──────
+       MobileNavBar имеет minHeight: 52px + paddingBottom (safe-area).
+       Плеер сдвигается вверх ровно на эту высоту: calc(52px + safe-area). */
+    .npb {
+        position: fixed;
+        bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+        left: 0;
+        right: 0;
+        padding: 6px 8px 6px;
+        z-index: 50;
+    }
+
+    /* Декоративное свечение под пилюлей — убираем (экономим GPU) */
+    .npb-underglow {
+        display: none;
+    }
+
+    /* Пилюля занимает всю ширину экрана */
+    .npb-dock {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px;
+    }
+
+    /* Внутренний отступ чуть компактнее */
+    .npb-content {
+        padding: 8px 12px 6px;
+        gap: 4px;
+    }
+
+    /* Строка контролов: меньший промежуток */
+    .npb-row {
+        gap: 6px;
+    }
+
+    /* Текст трека занимает всё оставшееся место */
+    .npb-txt {
+        max-width: none;
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* ── FIX 2: Скрытие вторичных элементов плеера ──────────────────────
+       Применяется к wrapper-дивам, помеченным в NowPlayingBar.tsx. */
+    .npb-mobile-hidden {
+        display: none !important;
+    }
+
+    /* Временны́е метки трека (00:00 / 3:45) — убираем для компактности */
+    .npb-times {
+        display: none;
+    }
+
+    /* Прогресс-лента чуть ближе к кнопкам */
+    .npb-lane {
+        margin-top: 2px;
+    }
+
+    /* ── FIX 3a: Сетки карточек → один столбец ─────────────────────────
+       Добавь класс mobile-grid-1col к grid-контейнерам
+       в AlbumsCatalog.tsx и ArtistsCatalog.tsx */
+    .mobile-grid-1col {
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+    }
+
+    /* ── FIX 3b: HorizontalScroll → вертикальный список ────────────────
+       Добавь класс mobile-v-list в className HorizontalScroll
+       (в CollectionRail.tsx / ArtistWire.tsx или прямо в HorizontalScroll.tsx) */
+    .mobile-v-list {
+        flex-direction: column !important;
+        overflow-x: hidden !important;
+        cursor: default !important;
+        gap: 8px !important;
+        /* Убираем «хватание» рукой — на мобиле нет горизонтального скролла */
+        active: default;
+    }
+
+    /* Все прямые дочерние элементы занимают полную ширину */
+    .mobile-v-list > * {
+        flex: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}

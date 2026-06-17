@@ -1063,23 +1063,40 @@ export const NowPlayingBar = React.memo(
           {/* content — repaints here never re-blur the glass below */}
           <div className="npb-content">
             <div className="npb-row">
+              {/* Обложка + название — всегда видны */}
               <PillTrack loadProgress={loadProgress} />
-              <ReactCluster />
 
-              <div className="npb-sep" />
+              {/* Лайк / дизлайк / качество — скрыты на мобиле (≤480px) */}
+              {/* display:contents: на десктопе дочерние элементы остаются
+                  прямыми flex-item'ами .npb-row, вёрстка не меняется.
+                  На мобиле npb-mobile-hidden даёт display:none → скрыто. */}
+              <span className="contents npb-mobile-hidden">
+                <ReactCluster />
+              </span>
 
+              {/* Разделитель — скрыт на мобиле */}
+              <div className="npb-sep npb-mobile-hidden" />
+
+              {/* Кнопки воспроизведения */}
               <div className="flex items-center gap-0.5">
-                <ShuffleBtn />
+                {/* Шаффл — скрыт на мобиле; contents сохраняет gap десктопа */}
+                <span className="contents npb-mobile-hidden"><ShuffleBtn /></span>
+                {/* Назад / Плей-Пауза / Вперёд — всегда видны */}
                 <PrevBtn />
                 <PlayPauseBtn />
                 <NextBtn />
-                <RepeatBtn />
-                <AbLoopBtn />
+                {/* Повтор + AB-петля — скрыты на мобиле */}
+                <span className="contents npb-mobile-hidden">
+                  <RepeatBtn />
+                  <AbLoopBtn />
+                </span>
               </div>
 
-              <div className="npb-sep" />
+              {/* Правая секция: тюнинг, эквалайзер, очередь, громкость —
+                  полностью скрыты на мобиле */}
+              <div className="npb-sep npb-mobile-hidden" />
 
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 npb-mobile-hidden">
                 <TuningBtn />
                 <EqBtn />
                 <LyricsBtn />
@@ -1092,6 +1109,8 @@ export const NowPlayingBar = React.memo(
               </div>
             </div>
 
+            {/* Прогресс-лента: LaneTimes скрыт на мобиле через CSS,
+                ProgressSlider остаётся */}
             <div className="npb-lane">
               <LaneTimes />
               <ProgressSlider />

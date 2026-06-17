@@ -81,7 +81,9 @@ export function HorizontalScroll({ children, className = '' }: HorizontalScrollP
           e.stopPropagation();
         }
       }}
-      className={`flex gap-4 overflow-x-hidden pb-2 scrollbar-hide cursor-grab active:cursor-grabbing ${className}`}
+      // mobile-v-list: на ≤480px переключает flex-direction в column
+      // и делает все дочерние элементы полной ширины (index.css)
+      className={`flex gap-4 overflow-x-hidden pb-2 scrollbar-hide cursor-grab active:cursor-grabbing mobile-v-list ${className}`}
       style={{
         contain: 'layout paint style',
         touchAction: 'pan-y',

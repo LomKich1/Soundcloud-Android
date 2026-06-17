@@ -58,7 +58,12 @@ const NAV_ITEMS: NavItem[] = [
 /**
  * Нижняя навигационная панель для мобильных устройств.
  * Рендерится вместо боковой Sidebar на экранах < 768px.
- * Размещается НАД NowPlayingBar (z-40, bottom отступ соответствует высоте плеера ~72px).
+ *
+ * ИСПРАВЛЕНИЕ НАЛОЖЕНИЯ:
+ * MobileNavBar теперь прибит к самому низу экрана (bottom: 0).
+ * NowPlayingBar позиционируется в CSS (@media max-width:480px) как
+ *   position: fixed; bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+ * — ровно поверх нашего навбара, без перекрытия.
  */
 export const MobileNavBar = React.memo(() => {
   const navigate = useNavigate();
@@ -68,14 +73,12 @@ export const MobileNavBar = React.memo(() => {
     <nav
       className="fixed left-0 right-0 z-40 flex items-center justify-around border-t"
       style={{
-        bottom: 'env(safe-area-inset-bottom, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 4px)',
+        bottom: 0,                                          // прибит к низу экрана
+        paddingBottom: 'env(safe-area-inset-bottom, 4px)', // отступ для notch / home-indicator
         background: 'rgba(8, 8, 12, 0.97)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         borderColor: 'rgba(255,255,255,0.07)',
-        // Высота плеера NowPlayingBar ≈ 72px, ставим себя прямо над ним
-        marginBottom: '72px',
       }}
     >
       {NAV_ITEMS.map(({ path, label, Icon }) => {

@@ -416,10 +416,11 @@ export const AppShell = React.memo(() => {
   }, [isMobile]);
 
   // ── Отступ под плеер ────────────────────────────────────────────────────────
-  // Десктоп: NowPlayingBar — плавающий dock, контент под ним (pb-[136px]).
-  // Мобильный: NowPlayingBar (~72px) + MobileNavBar (~52px + safe-area) = ~136px.
-  // Итого отступ одинаковый, но на мобиле ещё нет Titlebar (56px) — компенсируем
-  // верхним паддингом через pt-safe (env safe-area-inset-top для notch).
+  // Десктоп: NowPlayingBar — плавающий absolute dock, контент под ним (pb-136px).
+  // Мобильный: оба бара — position:fixed (см. CSS @media max-width:480px и MobileNavBar).
+  //   MobileNavBar ≈ 56px (52px minHeight + paddingBottom safe-area)
+  //   NowPlayingBar ≈ 84px (compact padding 6+6px + dock ~72px)
+  //   Итого нижний хром ≈ 140px → берём 148px для запаса.
   const mainPaddingBottom = isMobile ? '148px' : '136px';
 
   return (
